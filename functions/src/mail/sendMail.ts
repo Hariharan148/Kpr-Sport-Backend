@@ -15,36 +15,36 @@ export const checkAttendance = functions.pubsub.schedule('20 13 * * *').timeZone
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  const studentEmails = new Map();
+  const studentsEmail = new Map() as any;
 
-  const promises: Promise<any>[] = [];
+  // const promises: Promise<any>[] = [];
 
   var studentDocId: string[] = [];
 
   console.log("hell");
 
-  const attendanceQuerySnapshot = await admin.firestore().collection('attendance')
-    .where('date', '==', today)
-    .get();
+  // const attendanceQuerySnapshot = await admin.firestore().collection('attendance')
+  //   .where('date', '==', today)
+  //   .get();
   
-  if (attendanceQuerySnapshot.docs.length > 0) {
-    const attendanceDoc = attendanceQuerySnapshot.docs[0];
-    console.log(attendanceDoc);
+  // if (attendanceQuerySnapshot.docs.length > 0) {
+  //   const attendanceDoc = attendanceQuerySnapshot.docs[0];
+  //   console.log(attendanceDoc);
     
-    const studentsQuerySnapshot = await attendanceDoc.ref.collection('students').get();
+  //   const studentsQuerySnapshot = await attendanceDoc.ref.collection('students').get();
 
-    studentsQuerySnapshot.forEach((studentDoc) => {
-      const isAbsent = studentDoc.data().attendanceStatus === false;
-      if(isAbsent){
-        studentDocId.push(studentDoc.id)
-      }
-    });
+  //   studentsQuerySnapshot.forEach((studentDoc) => {
+  //     const isAbsent = studentDoc.data().attendanceStatus === false;
+  //     if(isAbsent){
+  //       studentDocId.push(studentDoc.id)
+  //     }
+  //   });
 
-    console.log(studentDocId);
+    // console.log(studentDocId);
 
 const studentsCollectionRef = admin.firestore().collection('students');
 
-  const matchingStudentsQuerySnapshot = await studentsCollectionRef.where(admin.firestore.FieldPath.documentId(), 'in', studentDocId).get();
+  const matchingStudentsQuerySnapshot = await studentsCollectionRef.where("JPmyj9tpOgZiU1bUGyfX", 'in', studentDocId).get();
 
   matchingStudentsQuerySnapshot.forEach((studentDoc) => {
     const emailInfo = {
@@ -52,54 +52,42 @@ const studentsCollectionRef = admin.firestore().collection('students');
       email: studentDoc.data().email,
       parentEmail: studentDoc.data().parentEmail
     };
-    studentEmails.set(studentDoc.id, emailInfo);
+    studentsEmail.set(studentDoc.id, emailInfo);
   });
+}
 
 
-    for (const studentDocId of studentEmails.keys()) {
-      const emailInfo = studentEmails.get(studentDocId);
-  
-      if (emailInfo) {
-        const studentName = emailInfo.name;
-        const studentEmail = emailInfo.email;
-        const parentEmail = emailInfo.parentEmail;
-  
+  try {
+    for (const student in studentsEmail) {
+      const request = mailjet.post('send', {'version': 'v3.1'}).request({
+        'Messages': [{
+          'From': {
+            'Email': 'kprsportapp@gmail.com',
+            'Name': `KprSport`
+          },
+          'To': [
+            {
+              'Email': studentsEmail[student],
+              'Name': student
+            },
+          ],
+          'Subject': 'Missed Sports Training',
+          'TextPart': `Dear ${student} ,\n\nYou missed our sports training session today. Regular attendance is important for our team's success. Please let us know if we can support you in attending future sessions.\n\nBest regards,\nKprSport}`
+        }]
+      });
 
-            const documentRef = admin.firestore().collection("extras").doc("RjQ52abKy4v1yCa16nSD");
-            let name;
-            documentRef.get().then((doc) => {
-              if (doc?.exists) {
-                name = doc?.data()?.name;
-                console.log(name);
-              } else {
-                console.log("No such document!");
-              }
-            }).catch((error) => {
-              console.log("Error getting document:", error);
-            });
-  
-            promises.push(mailjet.post('send', {'version': 'v3.1'}).request({
-              'Messages': [{
-                'From': {
-                  'Email': 'kprsportapp@gmail.com',
-                  'Name': `${name ? name : "KprSport"}`
-                },
-                'To': [
-                  {
-                    'Email': studentEmail,
-                    'Name': studentName
-                  },
-                  {
-                    'Email': parentEmail
-                  }
-                ],
-                'Subject': 'Missed Sports Training',
-                'TextPart': `Dear ${studentName},\n\nYou missed our sports training session today. Regular attendance is important for our team's success. Please let us know if we can support you in attending future sessions.\n\nBest regards,\n${name ? name : "KprSport"}`
-              }]
-            }));
-
-
+      console.log(request.body);
+      
+      // Check if the response was successful
+      if (request.status === 200) {
+        console.log(`Email sent to ${student}`);
+      } else {
+        console.error(`Error sending email to ${student}. Status code: ${request.status}`);
       }
     }
+  
+  } catch (err) {
+    console.error(err);
   }
 });
+
