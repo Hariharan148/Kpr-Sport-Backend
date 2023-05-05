@@ -3,6 +3,7 @@ import * as admin from 'firebase-admin';
 const Mailjet = require('node-mailjet');
 
 
+
 admin.initializeApp();
 
 const mailjet = new Mailjet({
@@ -11,78 +12,95 @@ const mailjet = new Mailjet({
 });
 
 
-export const checkAttendance = functions.pubsub.schedule('20 13 * * *').timeZone('Asia/Kolkata').onRun(async (context)  => {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+export const checkAttendance = functions.pubsub
+  .schedule('0 12 * * *')
+  .timeZone('Asia/Kolkata')
+  .onRun(async (context) => {
+    try {
+      const today = new Date().toISOString().slice(0, 10);
 
-  const studentEmails = new Map();
+      const studentEmails = new Map();
 
-  const promises: Promise<any>[] = [];
+      const promises = [];
 
-  var studentDocId: string[] = [];
+      const studentDocId: string[] = [];
 
-  console.log("hell");
+      console.log('hell', today);
 
-  const attendanceQuerySnapshot = await admin.firestore().collection('attendance')
-    .where('date', '==', today)
-    .get();
-  
-  if (attendanceQuerySnapshot.docs.length > 0) {
-    const attendanceDoc = attendanceQuerySnapshot.docs[0];
-    console.log(attendanceDoc);
-    
-    const studentsQuerySnapshot = await attendanceDoc.ref.collection('students').get();
+      const attendanceQuerySnapshot = await admin
+        .firestore()
+        .collection('attendance')
+        .where('date', '==', today)
+        .get();
 
-    studentsQuerySnapshot.forEach((studentDoc) => {
-      const isAbsent = studentDoc.data().attendanceStatus === false;
-      if(isAbsent){
-        studentDocId.push(studentDoc.id)
+      if (attendanceQuerySnapshot.docs.length <= 0) {
+        return;
       }
-    });
 
-    console.log(studentDocId);
+      const attendanceDoc = attendanceQuerySnapshot.docs[0];
+      console.log(attendanceDoc);
 
-const studentsCollectionRef = admin.firestore().collection('students');
+      const studentsQuerySnapshot = await attendanceDoc.ref
+        .collection('students')
+        .get();
 
-  const matchingStudentsQuerySnapshot = await studentsCollectionRef.where(admin.firestore.FieldPath.documentId(), 'in', studentDocId).get();
+      studentsQuerySnapshot.forEach((studentDoc) => {
+        const isAbsent = studentDoc.data().attendanceStatus === false;
+        if (isAbsent) {
+          studentDocId.push(studentDoc.id);
+        }
+      });
 
-  matchingStudentsQuerySnapshot.forEach((studentDoc) => {
-    const emailInfo = {
-      name: studentDoc.data().name,
-      email: studentDoc.data().email,
-      parentEmail: studentDoc.data().parentEmail
-    };
-    studentEmails.set(studentDoc.id, emailInfo);
-  });
+      console.log(studentDocId);
 
+      const studentsCollectionRef = admin.firestore().collection('students');
 
-    for (const studentDocId of studentEmails.keys()) {
-      const emailInfo = studentEmails.get(studentDocId);
-  
-      if (emailInfo) {
-        const studentName = emailInfo.name;
-        const studentEmail = emailInfo.email;
-        const parentEmail = emailInfo.parentEmail;
-  
+      if (studentDocId.length === 0) {
+        return;
+      }
 
-            const documentRef = admin.firestore().collection("extras").doc("RjQ52abKy4v1yCa16nSD");
-            let name;
-            documentRef.get().then((doc) => {
-              if (doc?.exists) {
-                name = doc?.data()?.name;
-                console.log(name);
-              } else {
-                console.log("No such document!");
-              }
-            }).catch((error) => {
-              console.log("Error getting document:", error);
-            });
-  
+      const matchingStudentsQuerySnapshot = await studentsCollectionRef
+        .where('id', 'in', studentDocId)
+        .get();
+      console.log('students', matchingStudentsQuerySnapshot);
+      matchingStudentsQuerySnapshot.forEach((studentDoc) => {
+        const emailInfo = {
+          name: studentDoc.data().name,
+          email: studentDoc.data().email,
+          parentEmail: studentDoc.data().parentEmail,
+        };
+        studentEmails.set(studentDoc.id, emailInfo);
+      });
+
+      console.log('email', studentEmails);
+
+      const documentRef = admin
+        .firestore()
+        .collection('extras')
+        .doc('RjQ52abKy4v1yCa16nSD');
+      let name;
+      const doc = await documentRef.get();
+      if (doc.exists) {
+        name = doc.data()?.name;
+        console.log(name);
+      } else {
+        console.log('No such document!');
+      }
+
+      for (const studentDocId of studentEmails.keys()) {
+        const emailInfo = studentEmails.get(studentDocId);
+        console.log('in', studentDocId);
+
+        if (emailInfo) {
+          const studentName = emailInfo.name;
+          const studentEmail = emailInfo.email;
+          const parentEmail = emailInfo.parentEmail;
+        
             promises.push(mailjet.post('send', {'version': 'v3.1'}).request({
               'Messages': [{
                 'From': {
                   'Email': 'kprsportapp@gmail.com',
-                  'Name': `${name ? name : "KprSport"}`
+                  'Name': "KprSport"
                 },
                 'To': [
                   {
@@ -94,7 +112,7 @@ const studentsCollectionRef = admin.firestore().collection('students');
                   }
                 ],
                 'Subject': 'Missed Sports Training',
-                'TextPart': `Dear ${studentName},\n\nYou missed our sports training session today. Regular attendance is important for our team's success. Please let us know if we can support you in attending future sessions.\n\nBest regards,\n${name ? name : "KprSport"}`
+                'TextPart': `Dear ${studentName},\n\nYou missed our sports training session today. Regular attendance is important for our team's success. Please let us know if we can support you in attending future sessions.\n\nBest regards,\nKprSport`,
               }]
             }));
 
@@ -102,4 +120,8 @@ const studentsCollectionRef = admin.firestore().collection('students');
       }
     }
   }
-});
+  catch (err) {
+  console.log(err);
+  }
+}
+);
