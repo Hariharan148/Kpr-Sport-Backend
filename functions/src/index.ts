@@ -1,5 +1,5 @@
 
 
-export {checkAttendance} from "./mail/sendMail"
+export {checkAttendance} from "./mail/sendSms"
 
 
